@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Actions;
@@ -17,6 +19,35 @@ namespace TheArenaExperience.CampaignBehaviours
         {
         }
 
+        bool IsDaring(Hero hero)
+        {
+            return hero.GetTraitLevel(DefaultTraits.Valor) >= 1;
+        }
+
+        // 10% chance to get +3, 20% chance to get +2, 70% chance to get +1
+        int RelationChange(Hero hero)
+        {
+            float roll = MBRandom.RandomFloatRanged(0f, 1f);
+
+            if (hero.IsNotable && IsDaring(hero))
+            {
+                roll += 0.25f;
+            }
+
+            if (roll > 0.9f)
+            {
+                return Settings.Instance.BaseRelationChange + 2;
+            }
+            else if (roll > 0.7f)
+            {
+                return Settings.Instance.BaseRelationChange + 1;
+            }
+            else
+            {
+                return Settings.Instance.BaseRelationChange;
+            }
+        }
+
         private void OnTournamentFinished(CharacterObject winner, Town town)
         {
             if (!winner.IsPlayerCharacter)
@@ -24,36 +55,71 @@ namespace TheArenaExperience.CampaignBehaviours
                 return;
             }
 
-            // Daring local heroes gain 1 relationship points
+            var heroesInTown = new List<Hero>();
+
             foreach (MobileParty party in town.Settlement.Parties)
             {
                 if (!party.IsLeaderless && !party.IsMainParty)
                 {
                     if (party.Leader.IsHero)
                     {
-                        if (party.Leader.GetTraitLevel(DefaultTraits.Valor) >= 1)
-                        {
-                            ChangeRelationAction.ApplyPlayerRelation(party.LeaderHero, Settings.Instance.RelationshipGain, false, true);
-                            InformationManager.DisplayMessage(new InformationMessage($"{party.Leader.Name} was impressed by your performance!"));
-                        }
+                        heroesInTown.Add(party.LeaderHero);
                     }
                 }
             }
+
             foreach (Hero hero in town.Settlement.HeroesWithoutParty)
             {
-                if (hero.GetTraitLevel(DefaultTraits.Valor) >= 1)
+                heroesInTown.Add(hero);
+            }
+
+            var notables = new List<Hero>();
+            var nobles = new List<Hero>();
+            var wanderers = new List<Hero>();
+
+            foreach (Hero hero in heroesInTown)
+            {
+                if (hero.IsNotable)
                 {
-                    ChangeRelationAction.ApplyPlayerRelation(hero, Settings.Instance.RelationshipGain, false, true);
-                    InformationManager.DisplayMessage(new InformationMessage($"{hero.Name} was impressed by your performance!"));
+                    notables.Add(hero);
+                }
+                else if (hero.IsWanderer && hero.CompanionOf != Clan.PlayerClan)
+                {
+                    wanderers.Add(hero);
+                }
+                else if (hero.IsNoble && IsDaring(hero))
+                {
+                    nobles.Add(hero);
                 }
             }
 
-            // Chance to impress a random local notable
-            if (MBRandom.RandomFloatRanged(0f, 1f) < Settings.Instance.ImpressedNotableChance)
+            Random random = new Random();
+
+            // Notable impressed
+            if (notables.Any() && MBRandom.RandomFloatRanged(0f, 1f) > Settings.Instance.ImpressedNotableChance)
             {
-                var notable = town.Settlement.Notables.GetRandomElement();
-                ChangeRelationAction.ApplyPlayerRelation(notable, Settings.Instance.RelationshipGain, false, true);
-                InformationManager.DisplayMessage(new InformationMessage($"{notable.Name} was impressed by your performance!"));
+                int r = random.Next(notables.Count);
+                Hero impressedHero = notables[r];
+                ChangeRelationAction.ApplyPlayerRelation(impressedHero, RelationChange(impressedHero), false, true);
+                InformationManager.DisplayMessage(new InformationMessage($"{impressedHero.Name} was impressed by your performance !"));
+            }
+
+            // Noble impressed
+            if (nobles.Any() && MBRandom.RandomFloatRanged(0f, 1f) > Settings.Instance.ImpressedNobleChance)
+            {
+                int r = random.Next(nobles.Count);
+                Hero impressedHero = nobles[r];
+                ChangeRelationAction.ApplyPlayerRelation(impressedHero, RelationChange(impressedHero), false, true);
+                InformationManager.DisplayMessage(new InformationMessage($"{impressedHero.Name} was impressed by your performance !"));
+            }
+            
+            // Wanderer impressed
+            if (wanderers.Any() && MBRandom.RandomFloatRanged(0f, 1f) > Settings.Instance.ImpressedWandererChance)
+            {
+                int r = random.Next(wanderers.Count);
+                Hero impressedHero = wanderers[r];
+                ChangeRelationAction.ApplyPlayerRelation(impressedHero, RelationChange(impressedHero), false, true);
+                InformationManager.DisplayMessage(new InformationMessage($"{impressedHero.Name} was impressed by your performance !"));
             }
         }
     }
